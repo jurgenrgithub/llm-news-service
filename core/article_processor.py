@@ -49,7 +49,7 @@ class ArticleProcessor:
                 cursor.execute(
                     """UPDATE articles SET body = %s, content_hash = %s,
                        triage_status = 'pending', analysis_status = 'pending',
-                       scraped_at = NOW(), expires_at = NOW() + INTERVAL '24 hours'
+                       scraped_at = NOW(), expires_at = NOW() + INTERVAL '7 days'
                        WHERE id = %s RETURNING *""",
                     (body, content_hash, existing["id"])
                 )
@@ -59,7 +59,7 @@ class ArticleProcessor:
             cursor.execute(
                 """INSERT INTO articles
                    (url_hash, content_hash, url, title, body, source, published_at, expires_at)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, NOW() + INTERVAL '24 hours')
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, NOW() + INTERVAL '7 days')
                    RETURNING *""",
                 (url_hash, content_hash, url, title, body, source, published_at)
             )
