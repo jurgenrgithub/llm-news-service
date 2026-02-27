@@ -77,6 +77,48 @@ def search(
     }
 
 
+@router.get("")
+def list_entities(
+    domain: Optional[str] = Query(None, description="Filter by domain"),
+    entity_type: Optional[str] = Query(None, description="Filter by type (player, team)"),
+    limit: int = Query(50, ge=1, le=500),
+) -> dict:
+    """List entities filtered by domain and/or type"""
+    from core.database import get_cursor
+
+    with get_cursor() as cursor:
+        sql = "SELECT * FROM entities WHERE 1=1"
+        params = []
+
+        if domain:
+            sql += " AND domain = %s"
+            params.append(domain)
+
+        if entity_type:
+            sql += " AND entity_type = %s"
+            params.append(entity_type)
+
+        sql += " ORDER BY canonical_name LIMIT %s"
+        params.append(limit)
+
+        cursor.execute(sql, params)
+        entities = cursor.fetchall()
+
+    return {
+        "count": len(entities),
+        "entities": [
+            EntitySearchResult(
+                id=str(e["id"]),
+                name=e["canonical_name"],
+                type=e["entity_type"],
+                domain=e["domain"],
+                match_type="list",
+            )
+            for e in entities
+        ],
+    }
+
+
 @router.get("/{entity_id}")
 def get_entity(entity_id: str) -> EntityResponse:
     """Get entity by ID"""
