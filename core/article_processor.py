@@ -262,6 +262,13 @@ Respond with ONLY JSON:
             self._mark_analysis_complete(item['id'])
             return
 
+        # Skip if player not actually mentioned or low confidence
+        event_type = result.get('event_type') or 'other'
+        confidence = result.get('confidence') or 0
+        if confidence < 0.3:
+            self._mark_analysis_complete(item['id'])
+            return
+
         # Create extraction event
         with get_cursor() as cursor:
             cursor.execute(
@@ -272,7 +279,7 @@ Respond with ONLY JSON:
                    VALUES ('afl', %s, %s, %s, %s, %s, %s, %s::uuid[], %s, %s, %s, %s, %s, %s)
                    ON CONFLICT (article_hash) DO NOTHING""",
                 (
-                    result.get('event_type', 'other'),
+                    event_type,
                     hashlib.sha256(f"{item['url']}:{player_name}".encode()).hexdigest(),
                     item['title'],
                     item['source'],
