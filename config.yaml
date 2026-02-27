@@ -1,0 +1,36 @@
+# LLM News Intelligence Service Configuration
+
+database:
+  # For sync psycopg2
+  host: 10.20.20.10
+  port: 5432
+  name: llm_news
+  user: llm_news
+  password: llm_news_dev_2026
+  # Async URL for SQLAlchemy
+  url: postgresql+asyncpg://llm_news:llm_news_dev_2026@10.20.20.10:5432/llm_news
+
+service:
+  host: 0.0.0.0
+  port: 8787
+
+claude:
+  cli_path: /bin/claude
+  model: claude-opus-4-5-20251101
+  timeout: 300
+  batch_size: 25
+  max_turns: 1
+
+cache:
+  ttl_hours: 1
+
+domains:
+  afl:
+    name: AFL
+    entity_types: [player, team]
+    extraction_schemas: [injury, selection, team_news, form, trade]
+
+  market:
+    name: Market
+    entity_types: [asset]
+    extraction_schemas: [sentiment, asset_impact]
