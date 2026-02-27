@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.extract import router as extract_router
 from api.entities import router as entities_router
 from api.health import router as health_router
+from api.articles import router as articles_router
 
 
 def load_config() -> dict:
@@ -35,7 +36,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="LLM News Intelligence Service",
     description="Structured news extraction and entity state tracking",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -52,6 +53,7 @@ app.add_middleware(
 app.include_router(health_router, tags=["health"])
 app.include_router(extract_router, prefix="/extract", tags=["extraction"])
 app.include_router(entities_router, prefix="/entities", tags=["entities"])
+app.include_router(articles_router, prefix="/articles", tags=["articles"])
 
 
 if __name__ == "__main__":

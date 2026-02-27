@@ -124,13 +124,34 @@ def get_news(
     days: Optional[int] = Query(None, ge=1, le=365, description="Filter to last N days"),
     limit: int = Query(20, ge=1, le=100),
 ) -> dict:
-    """Get recent news/extractions for an entity"""
+    """Get recent news/extractions for an entity with full article context."""
+    from core.database import get_cursor
+
     entity = get_entity_by_id(entity_id)
 
     if not entity:
         raise HTTPException(status_code=404, detail="Entity not found")
 
-    events = get_entity_events(entity_id, limit=limit, days=days)
+    # Query with article join for full context
+    with get_cursor() as cursor:
+        sql = """
+            SELECT ee.*, a.title as article_title, a.body as article_body,
+                   a.url as article_url, a.published_at as article_published
+            FROM extraction_events ee
+            LEFT JOIN articles a ON ee.article_id = a.id
+            WHERE %s = ANY(ee.entities_mentioned)
+        """
+        params = [entity_id]
+
+        if days:
+            sql += " AND ee.created_at >= NOW() - INTERVAL '%s days'"
+            params.append(days)
+
+        sql += " ORDER BY ee.created_at DESC LIMIT %s"
+        params.append(limit)
+
+        cursor.execute(sql, params)
+        events = cursor.fetchall()
 
     return {
         "entity": EntityResponse(
@@ -148,6 +169,12 @@ def get_news(
                 "schema": e["schema_type"],
                 "data": e["extracted_data"],
                 "source": e["source"],
+                "quotes": e.get("key_quotes"),
+                "severity": e.get("injury_severity"),
+                "article": {
+                    "url": e.get("article_url"),
+                    "body_preview": e.get("article_body", "")[:500] if e.get("article_body") else None,
+                } if e.get("article_id") else None,
                 "extracted_at": e["created_at"].isoformat() if e["created_at"] else None,
             }
             for e in events
