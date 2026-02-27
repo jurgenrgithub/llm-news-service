@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from core.claude_client import ClaudeClient
 from core.database import get_cache, set_cache, create_extraction_event
+from core.entity_resolver import resolve_entities_from_extraction
 
 
 router = APIRouter()
@@ -177,10 +178,14 @@ def extract(request: ExtractionRequest):
             schema = item.pop("schema", "other")
             item.pop("id", None)
 
+            # Resolve entities
+            resolved_entities = resolve_entities_from_extraction(item, request.domain)
+            entity_ids = [e["id"] for e in resolved_entities]
+
             extraction = ExtractedItem(
                 article_index=idx,
                 schema_detected=schema,
-                entities=[],  # TODO: entity resolution
+                entities=resolved_entities,
                 data=item,
                 confidence=item.get("confidence"),
             )
@@ -201,6 +206,7 @@ def extract(request: ExtractionRequest):
                     extracted_data=item,
                     source=article.source,
                     source_url=article.url,
+                    entities_mentioned=entity_ids if entity_ids else None,
                 )
 
     # Cache response
