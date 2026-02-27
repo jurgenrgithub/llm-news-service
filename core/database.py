@@ -153,7 +153,7 @@ def create_extraction_event(
                 """INSERT INTO extraction_events
                    (domain, schema_type, article_hash, headline, source, source_url,
                     extracted_data, entities_mentioned, confidence)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s::uuid[], %s)
                    RETURNING *""",
                 (domain, schema_type, article_hash, headline, source, source_url,
                  json.dumps(extracted_data), entities_mentioned, confidence)
