@@ -3,7 +3,7 @@
 Indexes articles by:
 - Players (canonical names + aliases)
 - Teams/Clubs (canonical names + aliases)
-- Keywords (injury, trade, selection, etc.)
+- Keywords (injury, trade, selection, etc.) with dimension mapping
 
 This runs synchronously at ingest, before any LLM analysis.
 """
@@ -16,6 +16,17 @@ from collections import defaultdict
 from core.database import get_cursor
 
 logger = logging.getLogger(__name__)
+
+
+# Map keyword tag values to dimension codes
+KEYWORD_TO_DIMENSION = {
+    "injury": "injury_status",
+    "return": "fitness_health",
+    "selection": "selection_security",
+    "trade": "selection_security",  # Trade affects selection security
+    "contract": "role_change",  # Contract affects role security
+    "form": "form_trajectory",
+}
 
 
 # Keyword patterns -> normalized tag values
@@ -81,11 +92,25 @@ class ArticleIndexer:
     # Singleton pattern for pattern cache
     _instance = None
     _patterns: Optional[List[Tuple[re.Pattern, str, str, str]]] = None
+    _dimension_ids: Optional[Dict[str, int]] = None  # code -> id
 
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
+
+    def _load_dimensions(self):
+        """Load dimension code -> id mapping."""
+        self._dimension_ids = {}
+        try:
+            with get_cursor() as cursor:
+                cursor.execute("SELECT id, code FROM dimensions WHERE is_active = TRUE")
+                for row in cursor.fetchall():
+                    self._dimension_ids[row["code"]] = row["id"]
+            logger.info(f"Loaded {len(self._dimension_ids)} dimensions")
+        except Exception as e:
+            logger.warning(f"Could not load dimensions (table may not exist): {e}")
+            self._dimension_ids = {}
 
     def index_article(self, article_id: int, title: str, body: str) -> Dict:
         """
@@ -96,6 +121,8 @@ class ArticleIndexer:
         """
         if self._patterns is None:
             self._load_patterns()
+        if self._dimension_ids is None:
+            self._load_dimensions()
 
         text = f"{title}\n{body}"
         title_len = len(title)
@@ -148,10 +175,15 @@ class ArticleIndexer:
                 idx += len(keyword)
 
         for tag_value, data in keyword_matches.items():
+            # Get dimension_id for this keyword
+            dimension_code = KEYWORD_TO_DIMENSION.get(tag_value)
+            dimension_id = self._dimension_ids.get(dimension_code) if dimension_code else None
+
             tags.append({
                 "tag_type": "keyword",
                 "tag_value": tag_value,
                 "entity_id": None,
+                "dimension_id": dimension_id,
                 "match_text": None,
                 "match_count": data["match_count"],
                 "is_headline": data["is_headline"],
@@ -222,16 +254,18 @@ class ArticleIndexer:
                 try:
                     cursor.execute(
                         """INSERT INTO article_tags
-                           (article_id, tag_type, tag_value, entity_id, match_text, match_count, is_headline)
-                           VALUES (%s, %s, %s, %s::uuid, %s, %s, %s)
+                           (article_id, tag_type, tag_value, entity_id, dimension_id, match_text, match_count, is_headline)
+                           VALUES (%s, %s, %s, %s::uuid, %s, %s, %s, %s)
                            ON CONFLICT (article_id, tag_type, tag_value) DO UPDATE
                            SET match_count = EXCLUDED.match_count,
-                               is_headline = EXCLUDED.is_headline""",
+                               is_headline = EXCLUDED.is_headline,
+                               dimension_id = COALESCE(EXCLUDED.dimension_id, article_tags.dimension_id)""",
                         (
                             article_id,
                             tag["tag_type"],
                             tag["tag_value"],
                             tag["entity_id"],
+                            tag.get("dimension_id"),
                             tag["match_text"],
                             tag["match_count"],
                             tag["is_headline"],
@@ -285,8 +319,9 @@ class ArticleIndexer:
         return total_stats
 
     def clear_cache(self):
-        """Clear pattern cache (call after entity changes)."""
+        """Clear pattern and dimension cache (call after entity/dimension changes)."""
         self._patterns = None
+        self._dimension_ids = None
 
 
 # Convenience function

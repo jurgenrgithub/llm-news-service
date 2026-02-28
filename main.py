@@ -11,6 +11,9 @@ from api.extract import router as extract_router
 from api.entities import router as entities_router
 from api.health import router as health_router
 from api.articles import router as articles_router
+from api.dimensions import router as dimensions_router
+from api.rounds import router as rounds_router
+from api.intelligence import router as intelligence_router
 
 
 def load_config() -> dict:
@@ -36,7 +39,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="LLM News Intelligence Service",
     description="Structured news extraction and entity state tracking",
-    version="0.2.0",
+    version="0.4.0",
     lifespan=lifespan,
 )
 
@@ -54,6 +57,9 @@ app.include_router(health_router, tags=["health"])
 app.include_router(extract_router, prefix="/extract", tags=["extraction"])
 app.include_router(entities_router, prefix="/entities", tags=["entities"])
 app.include_router(articles_router, prefix="/articles", tags=["articles"])
+app.include_router(dimensions_router, prefix="/dimensions", tags=["dimensions"])
+app.include_router(rounds_router, prefix="/rounds", tags=["rounds"])
+app.include_router(intelligence_router, prefix="/intelligence", tags=["intelligence"])
 
 
 if __name__ == "__main__":
