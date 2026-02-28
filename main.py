@@ -14,6 +14,7 @@ from api.articles import router as articles_router
 from api.dimensions import router as dimensions_router
 from api.rounds import router as rounds_router
 from api.intelligence import router as intelligence_router
+from api.ml import router as ml_router
 
 
 def load_config() -> dict:
@@ -39,7 +40,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="LLM News Intelligence Service",
     description="Structured news extraction and entity state tracking",
-    version="0.4.0",
+    version="0.5.0",
     lifespan=lifespan,
 )
 
@@ -60,6 +61,7 @@ app.include_router(articles_router, prefix="/articles", tags=["articles"])
 app.include_router(dimensions_router, prefix="/dimensions", tags=["dimensions"])
 app.include_router(rounds_router, prefix="/rounds", tags=["rounds"])
 app.include_router(intelligence_router, prefix="/intelligence", tags=["intelligence"])
+app.include_router(ml_router, prefix="/ml", tags=["ml"])
 
 
 if __name__ == "__main__":
