@@ -180,3 +180,144 @@ def trigger_cleanup():
     processor = ArticleProcessor()
     count = processor.cleanup_expired()
     return {"deleted": count}
+
+@router.get("/by-entity/{entity_id}")
+def get_articles_by_entity(
+    entity_id: str,
+    limit: int = Query(20, ge=1, le=100),
+):
+    """Get all articles mentioning an entity (via tags)."""
+    with get_cursor() as cursor:
+        cursor.execute(
+            """SELECT DISTINCT a.id, a.url, a.title, a.source, a.published_at,
+                      t.tag_value, t.match_count, t.is_headline
+               FROM articles a
+               JOIN article_tags t ON a.id = t.article_id
+               WHERE t.entity_id = %s::uuid
+               ORDER BY a.published_at DESC
+               LIMIT %s""",
+            (entity_id, limit)
+        )
+        results = cursor.fetchall()
+
+    return {
+        "count": len(results),
+        "articles": [
+            {
+                "id": r["id"],
+                "url": r["url"],
+                "title": r["title"],
+                "source": r["source"],
+                "published_at": r["published_at"].isoformat() if r["published_at"] else None,
+                "tag_value": r["tag_value"],
+                "mention_count": r["match_count"],
+                "in_headline": r["is_headline"],
+            }
+            for r in results
+        ]
+    }
+
+
+@router.get("/by-keyword/{keyword}")
+def get_articles_by_keyword(
+    keyword: str,
+    limit: int = Query(20, ge=1, le=100),
+):
+    """Get all articles with a keyword tag (injury, trade, selection, etc)."""
+    with get_cursor() as cursor:
+        cursor.execute(
+            """SELECT a.id, a.url, a.title, a.source, a.published_at,
+                      t.match_count, t.is_headline
+               FROM articles a
+               JOIN article_tags t ON a.id = t.article_id
+               WHERE t.tag_type = 'keyword' AND t.tag_value = %s
+               ORDER BY a.published_at DESC
+               LIMIT %s""",
+            (keyword, limit)
+        )
+        results = cursor.fetchall()
+
+    return {
+        "count": len(results),
+        "keyword": keyword,
+        "articles": [
+            {
+                "id": r["id"],
+                "url": r["url"],
+                "title": r["title"],
+                "source": r["source"],
+                "published_at": r["published_at"].isoformat() if r["published_at"] else None,
+                "match_count": r["match_count"],
+                "in_headline": r["is_headline"],
+            }
+            for r in results
+        ]
+    }
+
+
+@router.get("/tags/stats")
+def get_tag_stats():
+    """Get statistics about article tags."""
+    with get_cursor() as cursor:
+        # Count by tag type
+        cursor.execute(
+            """SELECT tag_type, COUNT(DISTINCT article_id) as article_count,
+                      COUNT(*) as tag_count
+               FROM article_tags
+               GROUP BY tag_type"""
+        )
+        by_type = cursor.fetchall()
+
+        # Top players mentioned
+        cursor.execute(
+            """SELECT tag_value, COUNT(*) as mentions
+               FROM article_tags
+               WHERE tag_type = 'player'
+               GROUP BY tag_value
+               ORDER BY mentions DESC
+               LIMIT 10"""
+        )
+        top_players = cursor.fetchall()
+
+        # Top teams mentioned
+        cursor.execute(
+            """SELECT tag_value, COUNT(*) as mentions
+               FROM article_tags
+               WHERE tag_type = 'team'
+               GROUP BY tag_value
+               ORDER BY mentions DESC
+               LIMIT 10"""
+        )
+        top_teams = cursor.fetchall()
+
+        # Keyword distribution
+        cursor.execute(
+            """SELECT tag_value, COUNT(*) as count
+               FROM article_tags
+               WHERE tag_type = 'keyword'
+               GROUP BY tag_value
+               ORDER BY count DESC"""
+        )
+        keywords = cursor.fetchall()
+
+    return {
+        "by_type": [{"type": t["tag_type"], "articles": t["article_count"], "tags": t["tag_count"]} for t in by_type],
+        "top_players": [{"name": p["tag_value"], "mentions": p["mentions"]} for p in top_players],
+        "top_teams": [{"name": t["tag_value"], "mentions": t["mentions"]} for t in top_teams],
+        "keywords": [{"keyword": k["tag_value"], "count": k["count"]} for k in keywords],
+    }
+
+
+@router.post("/reindex")
+def trigger_reindex(batch_size: int = Query(100, ge=1, le=500)):
+    """Re-index all unindexed articles."""
+    from core.article_indexer import reindex_all_articles
+
+    stats = reindex_all_articles(batch_size)
+    return {
+        "status": "completed",
+        "articles_indexed": stats["articles"],
+        "players_tagged": stats["players"],
+        "teams_tagged": stats["teams"],
+        "keywords_tagged": stats["keywords"],
+    }

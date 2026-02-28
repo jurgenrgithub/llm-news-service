@@ -7,6 +7,7 @@ from typing import List, Optional, Dict
 
 from core.database import get_cursor
 from core.claude_client import ClaudeClient
+from core.article_indexer import index_article
 
 
 class ArticleProcessor:
@@ -28,6 +29,7 @@ class ArticleProcessor:
     ) -> Optional[Dict]:
         """
         Ingest article into cache. Returns article record or None if duplicate.
+        Indexes article immediately for fast entity/keyword lookups.
         """
         url_hash = hashlib.sha256(url.encode()).hexdigest()
         content_hash = hashlib.sha256(body.encode()).hexdigest()
@@ -45,15 +47,19 @@ class ArticleProcessor:
                 # Same URL, check if content changed
                 if existing["content_hash"] == content_hash:
                     return None  # Duplicate, skip
-                # Content changed - update
+                # Content changed - update and re-index
                 cursor.execute(
                     """UPDATE articles SET body = %s, content_hash = %s,
                        triage_status = 'pending', analysis_status = 'pending',
+                       indexed_at = NULL,
                        scraped_at = NOW(), expires_at = NOW() + INTERVAL '7 days'
                        WHERE id = %s RETURNING *""",
                     (body, content_hash, existing["id"])
                 )
-                return cursor.fetchone()
+                result = cursor.fetchone()
+                if result:
+                    index_article(result['id'], title, body)
+                return result
 
             # New article
             cursor.execute(
@@ -63,7 +69,13 @@ class ArticleProcessor:
                    RETURNING *""",
                 (url_hash, content_hash, url, title, body, source, published_at)
             )
-            return cursor.fetchone()
+            result = cursor.fetchone()
+
+        # Index immediately after insert (outside transaction for isolation)
+        if result:
+            index_article(result['id'], title, body)
+
+        return result
 
     # === PHASE 1: TRIAGE ===
 
